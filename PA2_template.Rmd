@@ -1,0 +1,195 @@
+---
+title: "Impact of Severe Weather on Communities and Municipalities"
+output: html_document
+---
+
+## Synopsis
+
+Bacon ipsum dolor sit amet pig pancetta ground round short loin tenderloin cow
+biltong leberkas chicken kielbasa beef ribs porchetta swine meatloaf. Ball tip
+short loin sausage porchetta, tongue capicola ham beef. Cow chuck prosciutto,
+frankfurter pork pastrami biltong leberkas chicken meatball bacon. Jowl chuck
+fatback tail meatball tongue ham hock capicola prosciutto kevin brisket pork
+chop. Spare ribs frankfurter pancetta ribeye, tri-tip ham sausage pig. T-bone
+chuck landjaeger cow ground round shankle filet mignon turducken drumstick
+capicola spare ribs.  
+
+## Data Processing
+
+The [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+file is downloaded if a local copy does not already exists. The `read.csv` function
+can directly read the `.csv` file embedded in the downloaded file.
+
+```{r datain, echo = TRUE, cache = TRUE}
+
+# download file (if it is necessary)
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+localFilename <- "StormData.bz2"
+if (!file.exists(localFilename)) {
+    download.file(fileUrl, destfile = localFilename, mode = "wb")
+} 
+
+# read the csv file embedded in the .bz2 file
+StormData <- read.csv(localFilename)
+
+# size of the imported data set
+dim(StormData)
+
+# assign formats to specific columns
+StormData$BGN_DATE <- as.Date(StormData$BGN_DATE, format = "%m/%d/%Y" )
+StormData$EVTYPE <- as.factor(StormData$EVTYPE)
+
+
+```
+
+First, those variables that have no recorded injuries nor fatalities plus
+no crop or property damage are identified. This permits dropping slightly more
+than 70% of the data for this analyis.  
+
+Even in this subset of data, the fields are completed in a very inconsistent
+manner. It is the opinion of this analysis that refresher training be provided
+to those recording the data to encourage the data recorded in a more uniform
+manner. The data will become more trustworthy and require less conjecture to
+prepare analytic data set suitable for study.  
+
+Property and Crop damage entries with `+` or `-` in the exponent field have
+been imputed with an exponent of 0. Investigating the few cases where this
+occurs, the values for property and crop damage are probablly grossly
+underestimated. However as two fatalities occur in the single variable with
+`-` for the exponent, I prefer not to drop the variables.  
+
+```{r tidyup, echo=TRUE, cache=FALSE}
+# tidy up parts off the data
+
+# drop variables that have no effect (no damage, no injuries, no fatalities)
+zeroPropDmg <- StormData$PROPDMG %in% 0
+zeroCropDmg <- StormData$CROPDMG %in% 0
+zeroFatal <- StormData$FATALITIES %in% 0
+zeroInjury <- StormData$INJURIES %in% 0
+
+zeroEffect <- (zeroPropDmg & zeroCropDmg & zeroFatal & zeroInjury)
+
+StormData <- StormData[!zeroEffect,]
+
+# size of the data set after dropping nonfunctional data
+
+dim(StormData)
+
+# now cleanup the exponents
+
+# we have these chars to cleanup in PROPDMGEXP:
+#
+# [1] "K" "M" ""  "B" "m" "+" "0" "5" "6" "4" "h" "2" "7" "3" "H" "-"
+
+# we have these chars to cleanup in CROPDMGEXP:
+#
+# [1] ""  "M" "K" "m" "B" "?" "0" "k"
+
+print(paste(sum(StormData$PROPDMGEXP %in% "+"), " variable with + as exponent for Property Damage"))
+print(paste(sum(StormData$PROPDMGEXP %in% "-"), " variable with - as exponent for Property Damage"))
+
+expSubs <- list(
+    c("K",3),
+    c("M",6),
+    c("^$",0),
+    c("m",6),
+    c("\\?",0),
+    c("h",2),
+    c("H",2),
+    c("B",9),
+    c("k",3),
+    c("[+]",0),
+    c("[-]",0))
+
+StormData$NewPROPDMGEXP <- StormData$PROPDMGEXP
+StormData$NewCROPDMGEXP <- StormData$CROPDMGEXP
+
+for (i in expSubs) {
+    StormData$NewPROPDMGEXP <- gsub(i[1],i[2],StormData$NewPROPDMGEXP)
+    StormData$NewCROPDMGEXP <- gsub(i[1],i[2],StormData$NewCROPDMGEXP)
+}
+
+StormData$NewPROPDMGEXP <- as.numeric(StormData$NewPROPDMGEXP)
+StormData$NewCROPDMGEXP <- as.numeric(StormData$NewCROPDMGEXP)
+
+dim(StormData)
+str(StormData)
+
+library(plyr)
+summ1 <- ddply(StormData, "EVTYPE", summarize,
+               TotPropertyDamage = sum(PROPDMG * 10^NewPROPDMGEXP),
+               TotCropDamage = sum(CROPDMG * 10^NewCROPDMGEXP),
+               TotFatalities = sum(FATALITIES),
+               TotInjuries = sum(INJURIES))
+
+```
+
+## Results
+
+### Cleveland Plots of Fatalities + Injuries vs EVTYPE:  
+
+```{r foobar, echo = TRUE}
+
+dim(summ1)
+zeroFatalities <- summ1$TotFatalities == 0 | is.na(summ1$TotFatalities)
+zeroInjuries <- summ1$TotInjuries == 0 | is.na(summ1$TotInjuries)
+
+sum(zeroFatalities)
+sum(!zeroFatalities)
+sum(zeroInjuries)
+sum(!zeroInjuries)
+
+unique(summ1$TotFatalities)
+unique(summ1$TotInjuries)
+
+topFatalities <- order(summ1$TotFatalities, decreasing = TRUE, na.last = TRUE)
+topInjuries <- order(summ1$TotInjuries, decreasing = TRUE, na.last=TRUE)
+topPropDamage <- order(summ1$TotPropertyDamage, decreasing = TRUE, na.last=TRUE)
+topCropDamage <- order(summ1$TotCropDamage, decreasing = TRUE, na.last=TRUE)
+
+require(ggplot2)
+require(scales)
+
+summ1$TotFatalities[order(summ1$TotFatalities, decreasing = TRUE, na.last = TRUE)[1:25]]
+topNN <-  min(25,length(topFatalities))
+p1 <- ggplot(summ1[topFatalities[1:topNN],],
+             aes(x=TotFatalities, y=reorder(EVTYPE, TotFatalities))) +
+    geom_segment(aes(yend=reorder(EVTYPE,TotFatalities)), xend=1.0, colour="grey50") +
+    geom_point(size=3) +
+    theme_bw() +
+    theme(panel.grid.major.y = element_blank()) +
+    geom_text(aes(label=TotFatalities), hjust=-0.5, colour="red")
+p1 + scale_x_log10()
+
+summ1$TotInjuries[order(summ1$TotInjuries, decreasing = TRUE, na.last=TRUE)[1:25]]
+topNN <-  min(25,length(topInjuries))
+p2 <- ggplot(summ1[topInjuries[1:topNN],],
+             aes(x=TotInjuries, y=reorder(EVTYPE, TotInjuries))) +
+    geom_segment(aes(yend=reorder(EVTYPE,TotInjuries)), xend=1.0, colour="grey50") +
+    geom_point(size=3) +
+    theme_bw() +
+    theme(panel.grid.major.y = element_blank()) +
+    geom_text(aes(label=TotInjuries), hjust=-0.5, colour="red")
+p2 + scale_x_log10()
+
+
+p3 <- ggplot(summ1[topPropDamage[1:topNN],],
+             aes(x=TotPropertyDamage, y=reorder(EVTYPE, TotPropertyDamage))) +
+    geom_point(size=3) +
+    theme_bw() +
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_line(colour="grey60", linetype="solid"))
+p3
+
+p4 <- ggplot(summ1[topCropDamage[1:topNN],],
+             aes(x=TotCropDamage, y=reorder(EVTYPE, TotCropDamage))) +
+    geom_segment(aes(yend=reorder(EVTYPE,TotCropDamage)), xend=0, colour="grey50") +
+    geom_point(size=3) +
+    theme_bw() +
+    theme(panel.grid.major.y = element_blank())
+p4
+
+dim(summ1)
+summ1[topPropDamage[1:topNN],]
+```
