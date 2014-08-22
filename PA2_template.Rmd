@@ -121,6 +121,11 @@ summ1 <- ddply(StormData, "EVTYPE", summarize,
                TotCropDamage = sum(CROPDMG * 10^NewCROPDMGEXP),
                TotFatalities = sum(FATALITIES),
                TotInjuries = sum(INJURIES))
+summ1$sumPropCropDamage <- summ1$TotPropertyDamage + summ1$TotCropDamage
+summ1$TotPropertyDamage <- summ1$TotPropertyDamage / 1e9
+summ1$TotCropDamage <- summ1$TotCropDamage / 1e9
+summ1$sumPropCropDamage <- summ1$sumPropCropDamage / 1e9
+head(summ1)
 
 ```
 
@@ -131,17 +136,17 @@ summ1 <- ddply(StormData, "EVTYPE", summarize,
 ```{r foobar, echo = TRUE}
 
 dim(summ1)
-zeroFatalities <- summ1$TotFatalities == 0 | is.na(summ1$TotFatalities)
-zeroInjuries <- summ1$TotInjuries == 0 | is.na(summ1$TotInjuries)
-
-sum(zeroFatalities)
-sum(!zeroFatalities)
-sum(zeroInjuries)
-sum(!zeroInjuries)
-
-unique(summ1$TotFatalities)
-unique(summ1$TotInjuries)
-
+# zeroFatalities <- summ1$TotFatalities == 0 | is.na(summ1$TotFatalities)
+# zeroInjuries <- summ1$TotInjuries == 0 | is.na(summ1$TotInjuries)
+# 
+# sum(zeroFatalities)
+# sum(!zeroFatalities)
+# sum(zeroInjuries)
+# sum(!zeroInjuries)
+# 
+# unique(summ1$TotFatalities)
+# unique(summ1$TotInjuries)
+# 
 topFatalities <- order(summ1$TotFatalities, decreasing = TRUE, na.last = TRUE)
 topInjuries <- order(summ1$TotInjuries, decreasing = TRUE, na.last=TRUE)
 topPropDamage <- order(summ1$TotPropertyDamage, decreasing = TRUE, na.last=TRUE)
@@ -151,45 +156,41 @@ require(ggplot2)
 require(scales)
 
 summ1$TotFatalities[order(summ1$TotFatalities, decreasing = TRUE, na.last = TRUE)[1:25]]
-topNN <-  min(25,length(topFatalities))
+topNN <-  25
 p1 <- ggplot(summ1[topFatalities[1:topNN],],
              aes(x=TotFatalities, y=reorder(EVTYPE, TotFatalities))) +
-    geom_segment(aes(yend=reorder(EVTYPE,TotFatalities)), xend=1.0, colour="grey50") +
+    geom_segment(aes(yend=reorder(EVTYPE,TotFatalities)), xend=0, colour="grey50") +
     geom_point(size=3) +
     theme_bw() +
     theme(panel.grid.major.y = element_blank()) +
     geom_text(aes(label=TotFatalities), hjust=-0.5, colour="red")
-p1 + scale_x_log10()
+p1 <-p1 + xlab("Total Number of Fatalities") +
+    ylab("Event Type")
+p1 + scale_x_log10(limits=c(1,80000))
 
 summ1$TotInjuries[order(summ1$TotInjuries, decreasing = TRUE, na.last=TRUE)[1:25]]
-topNN <-  min(25,length(topInjuries))
 p2 <- ggplot(summ1[topInjuries[1:topNN],],
              aes(x=TotInjuries, y=reorder(EVTYPE, TotInjuries))) +
-    geom_segment(aes(yend=reorder(EVTYPE,TotInjuries)), xend=1.0, colour="grey50") +
+    geom_segment(aes(yend=reorder(EVTYPE,TotInjuries)), xend=0, colour="grey50") +
     geom_point(size=3) +
     theme_bw() +
     theme(panel.grid.major.y = element_blank()) +
     geom_text(aes(label=TotInjuries), hjust=-0.5, colour="red")
-p2 + scale_x_log10()
+p2 <- p2 + xlab("Total Number of Injuries") +
+    ylab("Event Type")
+p2 + scale_x_log10(limits=c(1,800000))
 
+topCPDamage <- order(summ1$sumPropCropDamage, decreasing = TRUE)
+p5 <- ggplot(summ1[topCPDamage[1:topNN],],
+             aes(x=sumPropCropDamage, y=reorder(EVTYPE, sumPropCropDamage))) +
+    geom_segment(aes(yend=reorder(EVTYPE,sumPropCropDamage)), xend=0, colour="blue") +
+    geom_point(size=3, color="blue") +
+    geom_text(aes(label=format(sumPropCropDamage, digits=2), hjust=-0.5))
 
-p3 <- ggplot(summ1[topPropDamage[1:topNN],],
-             aes(x=TotPropertyDamage, y=reorder(EVTYPE, TotPropertyDamage))) +
-    geom_point(size=3) +
-    theme_bw() +
-    theme(panel.grid.major.x = element_blank(),
-          panel.grid.minor.x = element_blank(),
-          panel.grid.major.y = element_line(colour="grey60", linetype="solid"))
-p3
+p5 <- p5 + theme_bw() + theme(panel.grid.major.y = element_blank()) +
+    xlab("Sum of Total Crop and Property Damage ($Billions)") +
+    ylab("Event Type")
 
-p4 <- ggplot(summ1[topCropDamage[1:topNN],],
-             aes(x=TotCropDamage, y=reorder(EVTYPE, TotCropDamage))) +
-    geom_segment(aes(yend=reorder(EVTYPE,TotCropDamage)), xend=0, colour="grey50") +
-    geom_point(size=3) +
-    theme_bw() +
-    theme(panel.grid.major.y = element_blank())
-p4
-
-dim(summ1)
-summ1[topPropDamage[1:topNN],]
+p5 + scale_x_log10(limits=c(1,400)) 
+    
 ```
